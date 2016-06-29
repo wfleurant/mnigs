@@ -5,12 +5,23 @@ local cgiluahandler = require "xavante.cgiluahandler"
 local redirecthandler = require "xavante.redirecthandler"
 
 local config = require("config")
+local conman = require("conman")
 
+-- Define here where Xavante HTTP documents scripts are located
+local webDir = "./www"
 
 local mnigs_logo = '[meshnet-mgr]'
 
 -- Xavante HTTP documents scripts are located
 local webDir = config.server.webdir
+
+xavante.HTTP{
+    server = {host = "::", port = config.server.rpcport},
+    
+    defaultHost = {
+    	rules = rules
+    },
+}
 
 local rules = {}
 
@@ -18,7 +29,7 @@ local rules = {}
 table.insert(rules, {
   match  = "^[^%./]*/$",
   with   = redirecthandler,
-  params = { "index.lua" }
+  params = { "index.html" }
 })
 
 -- rpc (redirect)
@@ -27,6 +38,7 @@ table.insert(rules, {
   with   = redirecthandler,
   params = { "jsonrpc.lua" }
 })
+
 
 -- cgi
 table.insert(rules, {
@@ -70,7 +82,15 @@ for ifs, server in pairs(listenOn) do
 
 end
 
-xavante.start();
+local thread = require "llthreads2".new[[
+	local conman = require("conman")
+	conman.startConnectionManager()
+]]
 
+thread:start(true, true)
+
+xavante.start()
 
 print(mnigs_logo, "Shutting down")
+
+thread:join()

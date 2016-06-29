@@ -10,7 +10,7 @@ local tunnel = require("cjdnstools.tunnel")
 local db = require("db")
 
 local callback = function(ip)
-	local addr = "http://[" .. ip .. "]:" .. config.server.rpcport .. "/jsonrpc"
+	local addr = "http://[" .. ip .. "]:" .. config.main.rpcport .. "/jsonrpc"
 	print("Checking " .. ip .. "...")
 	local server = rpc.proxy(addr)
 	local result, err = server.gatewayInfo()
@@ -19,7 +19,7 @@ local callback = function(ip)
 	else
 		if result.name and result.name then
 			print("Server '" .. result.name .. "' at " .. ip)
-			db.registerServer(result.name, ip)
+			db.registerGateway(result.name, ip)
 		end
 	end
 end
