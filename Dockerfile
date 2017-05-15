@@ -2,91 +2,91 @@
 # @license The MIT License (MIT)
 # @copyright 2016 Alex <alex@maximum.guru>
 
-FROM ubuntu:16.04
+FROM        ubuntu:16.04
 
-MAINTAINER Alex <alex@maximum.guru>
+MAINTAINER  Alex <alex@maximum.guru>
 
-# install alpine packages
-RUN { \
-	apt-get update && apt-get install -yq bash iptables net-tools iproute2 inetutils-ping lua5.1 lua-filesystem liblua5.1-0-dev build-essential luarocks git nodejs python linux-headers-generic unzip libsqlite3-dev sqlite3; \
-}
+ENV     CJDNS_REMOTE https://github.com/cjdelisle/cjdns.git
 
-RUN { \
-	rm /bin/sh && \
-	ln -s bash /bin/sh; \
-}
+## Defaults: Compiles with SECCOMP and runs cjd's assertion tests
+ENV     CJDNS_NO_TEST 0
+ENV     CJDNS_SECCOMP 0
 
-# install lua dependencies
-RUN { \
-	luarocks install luasocket && \
-	luarocks install cgilua && \
-	luarocks install lua-cjson && \
-	luarocks install inifile && \
-	luarocks install xavante && \
-	luarocks install wsapi-xavante && \
-	luarocks install jsonrpc4lua && \
-	luarocks install sha2 && \
-	luarocks install bencode && \
-	luarocks install dkjson && \
-	luarocks install bit32 && \
-	luarocks install alt-getopt && \
-	luarocks install luaproc && \
-	luarocks install luasql-sqlite3; \
-}
+RUN     apt update && \
+        DEBIAN_FRONTEND=noninteractive apt install -y \
+            bash \
+            build-essential \
+            git \
+            inetutils-ping \
+            iproute2 \
+            iptables \
+            liblua5.1-0-dev \
+            libsqlite3-dev \
+            linux-headers-generic \
+            lua-filesystem \
+            lua5.1 \
+            luarocks \
+            net-tools \
+            nodejs \
+            python \
+            sqlite3 \
+            unzip && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
-# install cjdns
-RUN { \
-	git clone --depth=1 https://github.com/cjdelisle/cjdns.git && \
-	cd cjdns && ./do && install -m755 -oroot -groot cjdroute /usr/sbin/cjdroute && \
-	rm -rf /cjdns && \
-	echo $'#!/bin/bash \n\
-if [ ! -f /etc/cjdroute.conf ]; then \n\
-	cjdroute --genconf > /etc/cjdroute.conf \n\
-fi \n\
-cjdroute --nobg < /etc/cjdroute.conf >/var/log/cjdns.log 2>&1 \n\
-' > /cjdns.sh && \
-	chmod a+x /cjdns.sh; \
-}
+RUN     for module in \
+            alt-getopt \
+            bencode \
+            bit32 \
+            cgilua \
+            dkjson \
+            inifile \
+            jsonrpc4lua \
+            lua-cjson \
+            luaproc \
+            luasocket \
+            luasql-sqlite3 \
+            sha2 \
+            wsapi-xavante \
+            xavante; \
+        do luarocks install $module; done
 
-# install transitd and patch dependencies
-COPY ./ /transitd/
-RUN { \
-	cd / && \
-	patch -p0 /usr/local/share/lua/5.1/socket/http.lua /transitd/patches/luasocket-ipv6-fix.patch && \
-	patch -p0 /usr/local/share/lua/5.1/cgilua/post.lua /transitd/patches/cgilua-content-type-fix.patch && \
-	echo $'#!/bin/bash \n\
-if [ ! -f /transitd/transitd.conf ]; then \n\
-	 cp /transitd/transitd.conf.sample /transitd/transitd.conf; \n\
-fi \n\
-cd /transitd/src/; sleep 3; lua5.1 daemon.lua -f ../transitd.conf >/var/log/transitd.log 2>&1 \n\
-' > /transitd.sh && \
-	chmod a+x /transitd.sh && \
-	echo $'#!/bin/bash \n\
-cd /transitd/src/; lua5.1 cli.lua "$@" \n\
-' > /usr/sbin/transitd-cli && \
-	chmod a+x /usr/sbin/transitd-cli; \
-}
+RUN     git clone --depth=1 ${CJDNS_REMOTE} && \
+        cd cjdns && \
+        NO_TEST=${CJDNS_NO_TEST} Seccomp_NO=${CJDNS_SECCOMP} ./do && \
+        install -m755 -oroot -groot cjdroute /usr/sbin/cjdroute && \
+        rm -rf /cjdns
 
-# cleanup
-RUN { \
-	apt-get purge -y --auto-remove liblua5.1-0-dev build-essential luarocks git nodejs python linux-headers-generic unzip libsqlite3-dev; \
-	apt-get autoremove; \
-	apt-get clean; \
-	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
-}
+WORKDIR /transitd
+ADD     patches/  patches/
+ADD     src/      src/
+ADD     README.md .
+ADD     LICENSE   .
+ADD     transitd.conf.sample .
 
-# startup script
-RUN { \
-	echo $'#!/bin/bash \n\
-transitd-cli --set \"`ip route|awk \'/default/ { print \"daemon.authorizedNetworks=127.0.0.1/8,::1/128,\" $3 }\'`\" \n\
-/cjdns.sh & \n\
-/transitd.sh & \n\
-echo \"Web UI available at http://`hostname -i`:65533/\" \n\
-echo \"# transitd-cli -h\" \n\
-transitd-cli -h \n\
-bash \n\
-' > /start.sh && \
-	chmod a+x /start.sh; \
-}
+WORKDIR /usr/sbin/
+ADD     _transitd-cli   transitd-cli
 
-CMD ["/start.sh"]
+WORKDIR /
+ADD     _cjdns.sh       cjdns.sh
+ADD     _start.sh       start.sh
+ADD     _transitd.sh    transitd.sh
+
+
+RUN     patch -p0 /usr/local/share/lua/5.1/socket/http.lua \
+                  /transitd/patches/luasocket-ipv6-fix.patch && \
+        patch -p0 /usr/local/share/lua/5.1/cgilua/post.lua \
+                  /transitd/patches/cgilua-content-type-fix.patch
+
+RUN     apt purge -y --auto-remove \
+            build-essential \
+            git \
+            liblua5.1-0-dev \
+            libsqlite3-dev \
+            linux-headers-generic \
+            luarocks \
+            nodejs \
+            python \
+            unzip && \
+        apt autoremove; apt clean && \
+        rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
