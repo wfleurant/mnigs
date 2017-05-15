@@ -1,0 +1,6 @@
+#!/bin/bash
+##
+# **Executed within container**
+##
+
+cd /transitd/src/ && lua5.1 cli.lua "$@"
