@@ -10,7 +10,7 @@ transitd web UI main js file
 
 */
 
-var serviceProxy = new rpc.ServiceProxy("/jsonrpc", {methods: ['nodeInfo','connectTo','disconnect','listGateways','pollCallStatus','listSessions','startScan','getGraphSince','status','configure']});
+var serviceProxy = new rpc.ServiceProxy("/jsonrpc", {methods: ['nodeInfo','connect','disconnect','listGateways','pollCallStatus','listSessions','startScan','getGraphSince','status','configure']});
 var restarting = false;
 
 // proxy that wraps calls with showSpinner/hideSpinner pair
@@ -79,7 +79,7 @@ function nonBlockingCallWrapper(result, callback, timeout)
 function bootstrap()
 {
 	$(document).prop('title', nodeInfo.name);
-	$('.navbar-brand').text(nodeInfo.name);
+	$('.node-name').text(nodeInfo.name);
 	
 	if(nodeInfo.gateway)
 	{

@@ -11,6 +11,7 @@ local network = {}
 local bit32 = require("bit32")
 local bit128 = require("bit128")
 local shell = require("lib.shell")
+local shrunner = require("shrunner")
 
 -- There are 3 different representations for IPs
 -- 1. internal {192,168,1,1} and ipv6 {255,...........}
@@ -30,30 +31,47 @@ end
 
 -- takes string representation and returns internal representation
 function network.parseIp(ip)
+	
+	if ip == nil then return nil, "IP not specified" end
+	
 	local data, err = network.parseIpv4(ip)
 	if err then
 		data, err = network.parseIpv6(ip)
 	end
-	if err or not data then
-		return nil, "Failed to parse IP '"..ip.."'"
+	
+	if err then
+		return nil, "Failed to parse IP: "..err
+	elseif not data then
+		return nil, "Failed to parse IP"
 	end
+	
 	return data, nil
+	
 end
 
 -- takes string representation and returns internal representation and cidr
 function network.parseSubnet(subnet)
+
+	if subnet == nil then return nil, "Subnet not specified" end
+	
 	local data, err = network.parseIpv4Subnet(subnet)
 	if err then
 		data, err = network.parseIpv6Subnet(subnet)
 	end
-	if err or not data then
-		return nil, "Failed to parse subnet '"..subnet.."'"
+	
+	if err then
+		return nil, "Failed to parse subnet: "..err
+	elseif not data then
+		return nil, "Failed to parse subnet"
 	end
+	
 	return data, nil
 end
 
 -- takes string representation and returns internal representation
 function network.parseIpv4(ip)
+	
+	if ip == nil then return nil, "IP not specified" end
 	
 	ip = tostring(ip)
 	local matches = {ip:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")}
@@ -74,6 +92,8 @@ end
 
 -- takes string representation and returns internal representation
 function network.parseIpv6(ip)
+	
+	if ip == nil then return nil, "IP not specified" end
 	
 	ip = tostring(ip)
 	local matches = {ip:match("^([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)(:?)([0-9a-f]*)$")}
@@ -152,6 +172,8 @@ end
 -- takes string representation of ip and cidr and returns internal representation and cidr
 function network.parseIpv4Subnet(subnet)
 	
+	if subnet == nil then return nil, "Subnet not specified" end
+	
 	local ip, cidr = subnet:match("^(%d+%.%d+%.%d+%.%d+)(/?%d*)$")
 	
 	if ip == nil and cidr == nil then return nil, "Not a valid subnet" end
@@ -176,6 +198,8 @@ end
 
 -- takes string representation of ip and cidr and returns internal representation and cidr
 function network.parseIpv6Subnet(subnet)
+	
+	if subnet == nil then return nil, "Subnet not specified" end
 	
 	local ip, cidr = subnet:match("^([0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*:?[0-9a-f]*)(/?%d*)$")
 	
@@ -280,9 +304,11 @@ end
 function network.getInterface(ifname)
 	
 	local ipv4subnets, err = network.getInterfaceIpv4subnets(ifname)
+	if err then return nil, err end
 	local ipv6subnets, err = network.getInterfaceIpv6subnets(ifname)
+	if err then return nil, err end
 	
-	return { ["name"] = ifname, ["ipv4subnets"] = ipv4subnets, ["ipv6subnets"] = ipv6subnets }
+	return { ["name"] = ifname, ["ipv4subnets"] = ipv4subnets, ["ipv6subnets"] = ipv6subnets }, nil
 end
 
 function network.getInterfaces()
@@ -294,7 +320,8 @@ function network.getInterfaces()
 	for l in procnetdev:lines() do
 		local ifname = string.match(string.lower(l), "^%s*(%w+):")
 		if ifname then
-			ifs[ifname] = network.getInterface(ifname)
+			local iface, err = network.getInterface(ifname)
+			if iface then ifs[ifname] = iface end
 		end
 	end
 	procnetdev:close()
@@ -304,7 +331,7 @@ end
 function network.getInterfaceIpv4subnets(interface)
 	interface = string.lower(interface)
 	
-	local ipcmd = io.popen(shell.escape({"ip", "addr", "show", interface}), 'r')
+	local ipcmd = shrunner.popen(shell.escape({"ip", "addr", "show", interface}), 'r')
 	
 	if not ipcmd then 
 		return nil, "Failed to get IPv4 address for interface "..interface
@@ -415,7 +442,7 @@ end
 
 function network.getIpv4TransitInterface()
 	
-	local ipcmd = io.popen("ip route show", 'r')
+	local ipcmd = shrunner.popen("ip route show", 'r')
 	
 	if not ipcmd then
 		return nil, "Failed to get routing table"
@@ -425,7 +452,8 @@ function network.getIpv4TransitInterface()
 		local interface = string.match(string.lower(l), "^default%s.*dev%s([^%s]+)%s")
 		if interface then
 			ipcmd:close()
-			return network.getInterface(interface), nil
+			local iface, err = network.getInterface(interface)
+			if iface then return iface, nil end
 		end
 	end
 	
@@ -436,7 +464,7 @@ end
 
 function network.getIpv6TransitInterface()
 	
-	local ipcmd = io.popen("ip -6 route show", 'r')
+	local ipcmd = shrunner.popen("ip -6 route show", 'r')
 	
 	if not ipcmd then
 		return nil, "Failed to get routing table"
@@ -446,7 +474,8 @@ function network.getIpv6TransitInterface()
 		local interface = string.match(string.lower(l), "^default%s.*dev%s([^%s]+)%s")
 		if interface then
 			ipcmd:close()
-			return network.getInterface(interface), nil
+			local iface, err = network.getInterface(interface)
+			if iface then return iface, nil end
 		end
 	end
 	
@@ -473,7 +502,7 @@ function network.ping4(addr)
 	
 	for k,i in pairs({1,2,3}) do
 		
-		local ipcmd = io.popen(shell.escape({"ping", "-c", i, "-s", 0, "-W", 1, addr}), 'r')
+		local ipcmd = shrunner.popen(shell.escape({"ping", "-c", i, "-s", 0, "-W", 1, addr}), 'r')
 		
 		if not ipcmd then
 			return nil, "Failed to execute ping"
@@ -511,7 +540,7 @@ function network.ping6(addr)
 	
 	for k,i in pairs({1,2,3}) do
 		
-		local ipcmd = io.popen(shell.escape({"ping6", "-c", i, "-s", 0, "-W", 1, addr}), 'r')
+		local ipcmd = shrunner.popen(shell.escape({"ping6", "-c", i, "-s", 0, "-W", 1, addr}), 'r')
 		
 		if not ipcmd then
 			return nil, "Failed to execute ping"
@@ -555,6 +584,13 @@ function network.setIpv4Forwading(value)
 	ipforward:write(tostring(value))
 	ipforward:close()
 	
+	-- TODO: determine if this is needed
+	--local cmd = shell.escape({"iptables","--append","FORWARD","-j","DROP"})
+	--local retval = shrunner.execute(cmd)
+	--if retval ~= 0 then
+	--	return nil, "iptables failed"
+	--end
+	
 	return true, nil
 end
 
@@ -567,6 +603,13 @@ function network.setIpv6Forwading(value)
 	
 	ipforward:write(tostring(value))
 	ipforward:close()
+	
+	-- TODO: determine if this is needed
+	--local cmd = shell.escape({"ip6tables","--append","FORWARD","-j","DROP"})
+	--local retval = shrunner.execute(cmd)
+	--if retval ~= 0 then
+	--	return nil, "iptables failed"
+	--end
 	
 	return true, nil
 end
@@ -589,5 +632,228 @@ function network.isAuthorizedIp(ip)
 	
 	return false, nil
 end
+
+function network.setInterfaceIp(interface, subnet)
+	
+	local ip, cidr = unpack(subnet)
+	ip = network.ip2string(ip)
+	cidr = tostring(cidr)
+	
+	local cmd = shell.escape({"ip", "addr", "add", ip.."/"..cidr, "dev", interface.name})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "Failed to add interface IP address"
+	end
+	
+	return true, nil
+end
+
+function network.unsetInterfaceIp(interface, subnet)
+	
+	local ip, cidr = unpack(subnet)
+	ip = network.ip2string(ip)
+	cidr = tostring(cidr)
+	
+	local cmd = shell.escape({"ip", "addr", "del", ip.."/"..cidr, "dev", interface.name})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "Failed to remove interface IP address"
+	end
+	
+	return true, nil
+end
+
+function network.setRoute(interface, subnet)
+	
+	local ip, cidr = unpack(subnet)
+	
+	local v6 = #ip > 4
+	
+	ip = network.ip2string(ip)
+	cidr = tostring(cidr)
+	
+	if v6 then
+		cmd = shell.escape({"ip", "-6", "route", "add", ip.."/"..cidr, "dev", interface.name})
+	else
+		cmd = shell.escape({"ip", "route", "add", ip.."/"..cidr, "dev", interface.name})
+	end
+	
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "Failed to add route"
+	end
+	
+	return true, nil
+end
+
+function network.unsetRoute(interface, subnet)
+	
+	local ip, cidr = unpack(subnet)
+	
+	local v6 = #ip > 4
+	
+	ip = network.ip2string(ip)
+	cidr = tostring(cidr)
+	
+	if v6 then
+		cmd = shell.escape({"ip", "-6", "route", "del", ip.."/"..cidr, "dev", interface.name})
+	else
+		cmd = shell.escape({"ip", "route", "del", ip.."/"..cidr, "dev", interface.name})
+	end
+	
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "Failed to add route"
+	end
+	
+	return true, nil
+end
+
+function network.setDefaultRoute(interface, v6, gatewayIp)
+	
+	-- ignore errors
+	network.unsetDefaultRoute(v6)
+	
+	local cmd = {"ip", "route", "add", "default"}
+	
+	if v6 then table.insert(cmd, 2, "-6") end
+	
+	if gatewayIp then
+		table.insert(cmd, "via")
+		table.insert(cmd, network.ip2string(gatewayIp))
+	end
+	
+	table.insert(cmd, "dev")
+	table.insert(cmd, interface.name)
+	
+	local src, ifsubnets
+	if v6 then
+		ifsubnets = interface.ipv6subnets
+	else
+		ifsubnets = interface.ipv4subnets
+	end
+	for k,ifsubnet in pairs(ifsubnets) do
+		local addr, cidr = unpack(ifsubnet)
+		src = network.ip2string(addr)
+		break
+	end
+	
+	table.insert(cmd, "src")
+	table.insert(cmd, src)
+	
+	local retval = shrunner.execute(shell.escape(cmd))
+	if retval ~= 0 then
+		return nil, "Failed to configure default route"
+	end
+	
+	return true, nil
+end
+
+function network.unsetDefaultRoute(v6)
+	
+	local retval
+	
+	if v6 then
+		retval = shrunner.execute("ip -6 route del default")
+	else
+		retval = shrunner.execute("ip route del default")
+	end
+	
+	if retval ~= 0 then
+		return nil, "Failed to remove default route"
+	end
+	
+	return true, nil
+end
+
+function network.setupNat4(interface, transitInterface)
+	
+	-- set up nat
+	local cmd = shell.escape({"iptables","--table","nat","--append","POSTROUTING","--out-interface",transitInterface.name,"-j","MASQUERADE"})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "iptables failed"
+	end
+	
+	local cmd = shell.escape({"iptables","--append","FORWARD","--in-interface",interface.name,"-j","ACCEPT"})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "iptables failed"
+	end
+	
+	return true, nil
+end
+
+function network.setupNat6(interface, transitInterface)
+	
+	-- set up nat
+	local cmd = shell.escape({"ip6tables","--table","nat","--append","POSTROUTING","--out-interface",transitInterface.name,"-j","MASQUERADE"})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "iptables failed"
+	end
+	
+	local cmd = shell.escape({"ip6tables","--append","FORWARD","--in-interface",interface.name,"-j","ACCEPT"})
+	local retval = shrunner.execute(cmd)
+	if retval ~= 0 then
+		return nil, "iptables failed"
+	end
+	
+	return true, nil
+end
+
+function network.setupTunnel(interfaceName, mode, remoteIp, localIp)
+	
+	if #remoteIp ~= #localIp then
+		return nil, "address family mismatch"
+	end
+	
+	v6 = #remoteIp > 4
+	
+	local cmd = {"ip", "tunnel", "add", interfaceName, "mode", mode, "remote", network.ip2string(remoteIp), "local", network.ip2string(localIp)}
+	
+	if v6 then table.insert(cmd, 2, "-6") end
+	
+	local retval = shrunner.execute(shell.escape(cmd))
+	if retval ~= 0 then
+		return nil, "Failed to set up tunnel"
+	end
+	
+	return true, nil
+end
+
+function network.teardownTunnel(interfaceName)
+	
+	local cmd = {"ip", "tunnel", "del", interfaceName}
+	local retval = shrunner.execute(shell.escape(cmd))
+	if retval ~= 0 then
+		return nil, "Failed to tear down tunnel"
+	end
+	
+	return true, nil
+end
+
+function network.upInterface(interfaceName)
+	
+	local cmd = {"ip", "link", "set", "dev", interfaceName, "up"}
+	local retval = shrunner.execute(shell.escape(cmd))
+	if retval ~= 0 then
+		return nil, "Failed to bring up interface"
+	end
+	
+	return true, nil
+end
+
+function network.downInterface(interfaceName)
+	
+	local cmd = {"ip", "link", "set", "dev", interfaceName, "down"}
+	local retval = shrunner.execute(shell.escape(cmd))
+	if retval ~= 0 then
+		return nil, "Failed to bring down interace"
+	end
+	
+	return true, nil
+end
+
 
 return network

@@ -9,9 +9,7 @@
 local shrunner = {}
 
 local config = require("config")
-
 local shell = require("lib.shell")
-local db = require("db")
 local threadman = require("threadman")
 
 function shrunner.run()
@@ -35,17 +33,21 @@ function shrunner.run()
 				if msg.type=="released" then exe = config.gateway.onRelease end
 				if msg.type=="connected" then exe = config.subscriber.onConnect end
 				if msg.type=="disconnected" then exe = config.subscriber.onDisconnect end
-				if exe and msg.sid then
-					local session = db.lookupSession(msg.sid)
+				if exe and msg.response.sid then
+					local db = require("db")
+					local session = db.lookupSession(msg.response.sid)
 					if session and exe then
 						local sid = session.sid or "0"
 						local meshIp = session.meshIP or "0"
 						local ipv4 = session.internetIPv4 or "0"
+						local cidr4 = session.internetIPv4cidr or "0"
 						local ipv4gateway = session.internetIPv4gateway or "0"
 						local ipv6 = session.internetIPv6 or "0"
+						local cidr6 = session.internetIPv6cidr or "0"
 						local ipv6gateway = session.internetIPv6gateway or "0"
-						local interface = msg.interface or "0"
-						cmd = shell.escape({exe, sid, meshIp, ipv4, ipv4gateway, ipv6, ipv6gateway, interface})
+						local interface4 = msg.response.interface4 or "0"
+						local interface6 = msg.response.interface6 or "0"
+						cmd = shell.escape({exe, sid, meshIp, ipv4, ipv4gateway, cidr4, ipv6, ipv6gateway, cidr6, interface4, interface6})
 					end
 				end
 			end
@@ -57,7 +59,7 @@ function shrunner.run()
 				if exe then cmd = shell.escape({exe}) end
 			end
 			if cmd then
-				local result = os.execute(cmd)
+				local result = shrunner.execute(cmd)
 				if result then
 					threadman.notify({type = "info", module = "daemon", info = "Command `"..cmd.."` successfully executed"})
 				else
@@ -68,6 +70,20 @@ function shrunner.run()
 	end
 	
 	threadman.unregisterListener(listener)
+end
+
+function shrunner.execute(cmd)
+	local retval = os.execute(cmd)
+	threadman.notify({type = "shell", ["cmd"] = cmd, ["retval"] = retval})
+	return retval
+end
+
+function shrunner.popen(...)
+	local retval = {io.popen(...)}
+	local retvalnotify
+	if not retval[1] then retvalnotify = retval end
+	threadman.notify({type = "shell", ["popen"] = {...}, ["retval"] = retvalnotify})
+	return unpack(retval)
 end
 
 return shrunner

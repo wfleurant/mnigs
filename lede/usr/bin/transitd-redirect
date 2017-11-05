@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+set -e
+
+source /etc/profile
+
+cd /opt/transitd
+lua redirect.lua
+return $?

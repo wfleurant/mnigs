@@ -1,42 +1,62 @@
-# Transit Daemon (transitd)
-Transit Daemon is an automated Internet gateway publish, search and connect tool for community networks.
+![Transit Daemon](src/www/images/logo.transitd.png?raw=true)
 
-The goal of this package is to provide to gateway operators the ability to automatically run and advertise their Internet gateway / VPN on a community network and to provide to subscribers the automated gateway search and connect functionality.
+# Transit Daemon
+Transit Daemon is an automated Internet gateway publishing tool for community networks.
 
-Emerging community mesh networks seek to provide free and open access to a network built by its users.  Implementations of such networks may not necessarily povide transit to the rest of the Internet.  Access to the traditional Internet has a recurring cost (paid to transit providers), which someone has to pay.  In the case where someone does pay for it, service type/quality may not suit all users.  This makes Internet access incompatible with the open/free nature of community networks.  In most cases, one cannot simply assume that access to such networks will grant them access to the traditional Internet.  There may be multiple available Internet gateways on a particular community network, some free of charge to use and some that may come at a cost.  In all cases, setting up connection to the traditional Internet through community network gateways is a manual process.  Transitd makes the process of getting and having Internet access via a community network easy.
+The goal of this application is to provide to gateway operators the ability to automatically run and advertise their Internet gateway / VPN on a community network and to provide to subscribers the automated gateway search and connect functionality.
+
+Emerging community mesh networks seek to provide free and open access to a network built by its users.  Implementations of such networks may not necessarily povide transit to the rest of the Internet.  Access to the traditional Internet has a recurring cost (paid to transit providers), which someone has to pay.  In the case where someone does pay for it, service type/quality may not be suitable to all users.  This makes Internet access incompatible with the open/free nature of community networks.  In most cases, one cannot simply assume that access to such networks will grant them access to the traditional Internet.  There may be multiple available Internet gateways on a particular community network, some may be free to use and some may have a fee.  In all cases, setting up connection to the traditional Internet through community network gateways is a manual process.
+
+Transit Daemon simplifies the process of arranging Internet access via a community network.
 
 ### Warning:  code in this repository is work in progress
 
-## Main Advantages
-Although it is possible for community network users to set up Internet connectivity on their networks manually, using this package has a number of advantages.
-* Quick and efficient to use
-* Installs on routers
-* No network administration knowledge needed
-* Decentralized (uses routing protocol facilities to do breadth first search for gateways)
-* Provides a selection of multiple gateways on a single network
-* Supports multiple routing protocols / network configurations
-* Supports multiple connection methods / tunneling configurations
-* Supports payments
+## How It Works
 
-### Network configuration support
+Transit Daemon has the following parts,
+
+1. Daemon process
+2. Web UI
+3. CLI tool
+
+The daemon process has the following parts,
+
+1. Web server that hosts the Web UI and HTTP JSON-RPC interface
+2. Scanner that searches the detected networks to find other hosts running transitd
+3. Connection manager that manages connections/tunnels
+3. Network support modules *(only cjdns module currently implemented)*
+4. Tunnel support modules *(only ipip module currently functional)*
+5. Payment support modules *(only free module currently implemented)*
+6. DHT that keeps data about gateways on the network *(to be implemented)*
+
+The CLI tool, Web UI, and other hosts communicate with the daemon through the HTTP JSON-RPC interface.  The network support modules interface with locally running routing software.  The tunnel support modules interface with the locally installed VPN software.  The payment support modules interface with payment processing infrastructure available on the Internet.
+
+### Network support
 * cjdns
-* babel <sup>to be implemented</sup>
-* batman-adv <sup>to be implemented</sup>
-* olsr <sup>to be implemented</sup>
-* layer 2 networks <sup>to be implemented</sup>
+* batman-adv *(to be implemented)*
+* bmx6/7 *(to be implemented)*
+* olsr/2 *(to be implemented)*
+* babel *(to be implemented)*
+* layer 2 networks *(to be implemented)*
 
-### Tunneling configuration support
-* cjdns tunneling
-* openvpn/softether <sup>to be implemented</sup>
-* tinc <sup>to be implemented</sup>
-* ipip/gre <sup>to be implemented</sup>
-* tun2socks? <sup>to be implemented</sup>
-* layer 2 forwarding <sup>to be implemented</sup>
+### Tunnel support
+* cjdns tunnels
+* ipip
+* gre *(to be implemented)*
+* openvpn *(to be implemented)*
+* softether *(to be implemented)*
+* fastd *(to be implemented)*
+* wireguard *(to be implemented)*
+* tinc *(to be implemented)*
+* tun2socks *(to be implemented)*
+* pptp *(to be implemented)*
+* IPSec *(to be implemented)*
+* l2tp *(to be implemented)*
 
 ### Payment method support
 * free
-* cryptocurrency microtransactions <sup>to be implemented</sup>
-* commercial payment processor + vpn service provider <sup>to be implemented</sup>
+* cryptocurrency microtransactions *(to be implemented)*
+* commercial payment processors *(to be implemented)*
 
 ## Gateway functions
 1. participate in general node interactions (scan network, bootstrap DHT, etc)
@@ -72,39 +92,41 @@ A fix is required to allow CGILua to accept JSON-RPC content type (see https://g
 
 A fix is required to allow JSON RPC requests to work with IPv6 (see https://github.com/diegonehab/luasocket/pull/91).  A more permanent fix has been merged into luasocket master branch, however, no stable release is available as of this writing.
 
-## Installation
+## Docker Installation
 
-### Docker Installation
+### Using Docker Compose
 ```
-$ git clone --depth=1 git://github.com/intermesh-networks/transitd.git
+$ git clone --depth=1 git://github.com/transitd/transitd.git
 $ cd transitd
-$ docker build -t "transitd:0" .
+$ docker-compose up
 ```
-### Gateway
+### Building the Docker Image Manually
 ```
-$ docker run -it --privileged --name=transitd-gateway transitd:0
-# transitd-cli --set gateway.enabled=yes
-# exit
-$ docker start -ai transitd-gateway
+$ git clone --depth=1 git://github.com/transitd/transitd.git
+$ cd transitd
+$ docker build -t transitd .
+```
+### Running a Gateway & Subscriber Test
+```
+$ docker run -it --cap-add=NET_ADMIN --device=/dev/net/tun --name=transitd-gateway transitd ./start.gateway.cli.sh
 # apt-get update
 # apt-get install tcpdump
 # tcpdump -i tun0
 ```
-### Subscriber
 ```
-$ docker run -it --privileged --name=transitd-sub transitd:0
+$ docker run -it --cap-add=NET_ADMIN --device=/dev/net/tun --name=transitd-sub transitd ./start.cli.sh
 # transitd-cli -s
 # transitd-cli -l
-# transitd-cli -c ....
+# transitd-cli -c <ip> -m <suite>
 # ip route show
 # ping 8.8.8.8
 ```
-### Web UI
+### Using the Web UI
 You can access `http://172.17.0.???:65533/` from your browser (where the IP address is the docker container instance address).
 
-### Manual Installation
+## Local Installation
 ```
-$ git clone --depth=1 git://github.com/intermesh-networks/transitd.git
+$ git clone --depth=1 git://github.com/transitd/transitd.git
 $ cd transitd
 $ sudo luarocks install cgilua
 $ sudo luarocks install lua-cjson
@@ -133,7 +155,7 @@ $ sudo luarocks install https://raw.githubusercontent.com/diegonehab/luasocket/m
 ```
 If you are using --local flag with luarocks, make sure you have ``` eval `luarocks path` ``` in your .bashrc file.
 
-## Configuration
+### Configuration
 ```
 $ cd transitd
 $ cp transitd.conf.sample transitd.conf
@@ -141,27 +163,25 @@ $ vi transitd.conf
 ```
 Add path to your cjdroute.conf config file in the [cjdns] section.
 
-## Usage
-
-### Run daemon
+### Runing Local Daemon
 ```
 $ cd src
 $ lua daemon.lua
 ```
 
-### Run command line interface
+### Using CLI
 ```
 $ cd src
 $ lua cli.lua
 ```
 
-### Web UI
+### Using the Web UI
 You can access `http://localhost:65533` from your browser.
 
-## Demo usage on a single host with CJDNS
+## Demo Usage on a Single Host with CJDNS
 In order to demo the system, you actually need 2 different machines.  You can avoid this by using 2 different config files running transitd on different ports and different database file.
 
-### Start daemon 1
+### Running Gateway & Subscriber Test
 ```
 $ cd transitd
 $ cp transitd.conf.sample transitd1.conf
@@ -173,8 +193,6 @@ $ lua cli.lua -f ../transitd1.conf --set gateway.enabled=yes
 $ lua cli.lua -f ../transitd1.conf --set database.file=transitd1.db
 $ lua daemon.lua -f ../transitd1.conf
 ```
-
-### Start daemon 2
 ```
 $ cd transitd
 $ cp transitd.conf.sample transitd2.conf
@@ -187,16 +205,16 @@ $ lua cli.lua -f ../transitd2.conf --set database.file=transitd2.db
 $ lua daemon.lua -f ../transitd2.conf
 ```
 
-### Trigger network scan
+### Trigger a Network Scan
 ```
 $ cd src
 $ lua cli.lua -f ../transitd2.conf -s
 ```
 
-### Trigger connection
+### Trigger a Connection
 ```
 $ cd src
-$ lua cli.lua -f ../transitd2.conf -c <YOUR CJDNS IP> -p 65533
+$ lua cli.lua -f ../transitd2.conf -c <YOUR CJDNS IP> -m cjdns-cjdns-free -p 65533
 ```
 
 ## Design
