@@ -12,6 +12,8 @@ ENV     CJDNS_REMOTE https://github.com/cjdelisle/cjdns.git
 ENV     CJDNS_NO_TEST 0
 ENV     CJDNS_SECCOMP 0
 
+EXPOSE  65533
+
 RUN     apt update && \
         DEBIAN_FRONTEND=noninteractive apt install -y \
             bash \
@@ -25,6 +27,8 @@ RUN     apt update && \
             linux-headers-generic \
             lua-filesystem \
             lua5.1 \
+            kmod \
+            psmisc \
             luarocks \
             net-tools \
             nodejs \
@@ -64,14 +68,11 @@ ADD     README.md .
 ADD     LICENSE   .
 ADD     transitd.conf.sample .
 
-WORKDIR /usr/sbin/
-ADD     _transitd-cli   transitd-cli
-
 WORKDIR /
-ADD     _cjdns.sh       cjdns.sh
-ADD     _start.sh       start.sh
-ADD     _transitd.sh    transitd.sh
+ADD     docker/*.sh ./
 
+WORKDIR /usr/sbin/
+ADD     docker/transitd-cli transitd-cli
 
 RUN     patch -p0 /usr/local/share/lua/5.1/socket/http.lua \
                   /transitd/patches/luasocket-ipv6-fix.patch && \
@@ -90,3 +91,6 @@ RUN     apt purge -y --auto-remove \
             unzip && \
         apt autoremove; apt clean && \
         rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+CMD     ["/start.sh"]
+
