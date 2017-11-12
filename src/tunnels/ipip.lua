@@ -105,22 +105,45 @@ function ipip.requestConnection(request, response)
 		response.success = false response.errorMsg = err return response
 	end
 	
+	local result, err = ipip.gatewaySubscriberSetup(session)
+	if err or not result then
+		threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "requestConnectionCommit", ["request"] = request, ["response"] = response, error = err})
+	end
+	
+	if result then
+		if result.interface4 and result.interface4.name then response.interface4 = result.interface4.name end
+		if result.interface6 and result.interface6.name then response.interface6 = result.interface6.name end
+	end
+	
 	response.success = true
 	
 	return response
 end
 
-function ipip.requestConnectionCommit(request, response)
+function ipip.requestConnectionAbort(request, response)
 	
-	local session, err = db.lookupSession(request.sid)
-	if not err and session then
-		local result, err = ipip.gatewaySubscriberSetup(session)
+	if response.interface4 or response.interface6 then
+		
+		local session, err = db.lookupSession(request.sid)
 		if err then
-			threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "requestConnectionCommit", ["request"] = request, ["response"] = response, error = err})
+			threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "requestConnectionAbort", ["request"] = request, ["response"] = response, error = err})
 		end
+		
+		local result, err = ipip.gatewaySubscriberTeardown(session)
+		if err then
+			threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "requestConnectionAbort", ["request"] = request, ["response"] = response, error = err})
+		end
+		
 	end
 	
-	response.success = true
+	response.ipv4 = nil
+	response.cidr4 = nil
+	response.ipv4gateway = nil
+	response.ipv6 = nil
+	response.cidr6 = nil
+	response.ipv6gateway = nil
+	response.interface4 = nil
+	response.interface6 = nil
 	
 	return response
 end
@@ -129,12 +152,17 @@ function ipip.releaseConnection(request, response)
 	
 	local session, err = db.lookupSession(request.sid)
 	if err then
-		response.success = false response.errorMsg = err return response
+		threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "releaseConnection", ["request"] = request, ["response"] = response, error = err})
 	end
 	
 	local result, err = ipip.gatewaySubscriberTeardown(session)
-	if err then
+	if err or not result then
 		threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "releaseConnection", ["request"] = request, ["response"] = response, error = err})
+	end
+	
+	if result then
+		if result.interface4 and result.interface4.name then response.interface4 = result.interface4.name end
+		if result.interface6 and result.interface6.name then response.interface6 = result.interface6.name end
 	end
 	
 	response.success = true
@@ -158,9 +186,9 @@ function ipip.connect(request, response)
 		end
 	end
 	
-	if result.interface then
-		response.interface4 = result.interface.name
-		response.interface6 = result.interface.name
+	if result then
+		if result.interface4 and result.interface4.name then response.interface4 = result.interface4.name end
+		if result.interface6 and result.interface6.name then response.interface6 = result.interface6.name end
 	end
 	
 	response.success = true
@@ -171,8 +199,13 @@ end
 function ipip.connectAbort(request, response)
 	
 	local result, err = ipip.subscriberTeardown(request.sid)
-	if err then
+	if err or not result then
 		threadman.notify({type = "error", module = "tunnels.ipip", ["function"] = "connectAbort", ["request"] = request, ["response"] = response, error = err})
+	end
+	
+	if result then
+		if result.interface4 and result.interface4.name then response.interface4 = result.interface4.name end
+		if result.interface6 and result.interface6.name then response.interface6 = result.interface6.name end
 	end
 	
 	return response
@@ -214,6 +247,8 @@ function ipip.gatewaySubscriberSetup(session)
 	
 	local networkModule = require("networks."..suites[suite].network.module)
 	
+	local result = {}
+	
 	local remoteIp, err = network.parseIp(session.meshIP)
 	local localIp, err = networkModule.getMyIp()
 	if err then return nil, err end
@@ -243,7 +278,7 @@ function ipip.gatewaySubscriberSetup(session)
 	if err then return nil, "Failed to bring up "..interfaceName.." tunnel: "..err end
 	if not res then return nil, "Failed to bring up "..interfaceName.." tunnel" end
 	
-	if session.internetIPv4 then
+	if config.ipip.ipv4subnet and config.ipip.ipv4gateway then
 		
 		local subnet4, err = network.parseIpv4Subnet(config.ipip.ipv4subnet)
 		if err then
@@ -257,9 +292,11 @@ function ipip.gatewaySubscriberSetup(session)
 		if err then return nil, "Failed to set up routing:"..err end
 		if not subnet4 then return nil, "Failed to set up routing" end
 		
+		result.interface4 = interface
+		
 	end
 	
-	if config.gateway.ipv6support == "yes" and session.internetIPv6 then
+	if config.gateway.ipv6support == "yes" and config.ipip.ipv6subnet and config.ipip.ipv6gateway then
 		
 		local subnet6, err = network.parseIpv6Subnet(config.ipip.ipv6subnet)
 		if err then
@@ -273,12 +310,16 @@ function ipip.gatewaySubscriberSetup(session)
 		if err then return nil, "Failed to set up routing:"..err end
 		if not subnet6 then return nil, "Failed to set up routing" end
 		
+		result.interface6 = interface
+		
 	end
 	
-	return interfaceName, nil
+	return result, nil
 end
 
 function ipip.gatewaySubscriberTeardown(session)
+	
+	local result = {}
 	
 	local interfaceName, err = db.getSessionIpipInterface(session.sid)
 	if err then return nil, "Failed to get session ipip interface name: "..err end
@@ -299,6 +340,8 @@ function ipip.gatewaySubscriberTeardown(session)
 		if err then return nil, "Failed to tear down gateway subscriber:"..err end
 		if not res then return nil, "Failed to tear down gateway subscriber" end
 		
+		result.interface4 = interface
+		
 	end
 	
 	if subnet6 then
@@ -306,6 +349,8 @@ function ipip.gatewaySubscriberTeardown(session)
 		local res, err = gateway.interfaceTeardown6(interface, subnet6)
 		if err then return nil, err end
 		if not res then return nil, "Failed to tear down gateway subscriber" end
+		
+		result.interface6 = interface
 		
 	end
 	
@@ -321,7 +366,7 @@ function ipip.gatewaySubscriberTeardown(session)
 		
 	end
 	
-	return true, nil
+	return result, nil
 end
 
 function ipip.subscriberSetup(session)
@@ -343,6 +388,8 @@ function ipip.subscriberSetup(session)
 	end
 	
 	local networkModule = require("networks."..suites[suite].network.module)
+	
+	local result = {}
 	
 	local remoteIp, err = network.parseIp(session.meshIP)
 	local localIp, err = networkModule.getMyIp()
@@ -386,6 +433,8 @@ function ipip.subscriberSetup(session)
 			return nil, "Failed to set local IPv4 address: "..err
 		end
 		
+		result.interface4 = interface
+		
 		if mode == "route" then
 			
 			-- interface data changed, update it
@@ -421,6 +470,8 @@ function ipip.subscriberSetup(session)
 			return nil, "Failed to set local IPv6 address: "..err
 		end
 		
+		result.interface6 = interface
+		
 		if mode == "route" then
 			
 			-- interface data changed, update it
@@ -443,24 +494,34 @@ function ipip.subscriberSetup(session)
 		
 	end
 	
-	return interfaceName, nil
+	return result, nil
 end
 
 function ipip.subscriberTeardown(sid)
+	
+	local result = {}
 	
 	local interfaceName, err = db.getSessionIpipInterface(sid)
 	if err then return nil, "Failed to get session ipip interface name: "..err end
 	if not interfaceName then return nil, "Failed to get session ipip interface name" end
 	
-	local res, err = network.downInterface(interfaceName)
+	local interface, err = network.getInterface(interfaceName)
+	if err then return nil, "Failed to query "..interfaceName.." interface: "..err end
+	if not interface then return nil, "Failed to query "..interfaceName.." interface" end
+	
+	local res, err = network.downInterface(interface.name)
 	if err then return nil, "Failed to bring down interface "..interfaceName..":"..err end
 	if not res then return nil, "Failed to bring down interface "..interfaceName end
 	
-	local res, err = network.teardownTunnel(interfaceName)
+	local res, err = network.teardownTunnel(interface.name)
 	if err then return nil, "Failed to tear down ipip tunnel:"..err end
 	if not res then return nil, "Failed to tear down ipip tunnel" end
 	
-	return true, nil
+	-- TODO: fix
+	result.interface4 = interface;
+	result.interface6 = interface;
+	
+	return result, nil
 end
 
 
