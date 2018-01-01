@@ -29,6 +29,8 @@ function rpcInterface.getInterface()
 		
 		info.version = 'prototype'
 		
+		info.geolocation = geolocation.getLocation()
+		
 		local requestip, err = rpcInterface.getRequestIp()
 		if err then
 			return { success = false, errorMsg = err }
@@ -497,6 +499,7 @@ function rpcInterface.connect(ip, port, gatewaySuiteId, sid)
 		return { success = false, errorMsg = "Failed to connect to " .. ip .. ": " .. err}
 	else
 		db.registerNode(info.name, ip, port)
+		if info.geolocation then db.setNodeLocation(ip, port, info.geolocation.latitude, info.geolocation.longitude, info.geolocation.altitude) end
 	end
 	
 	local gatewaySuite = nil
@@ -657,12 +660,19 @@ function rpcInterface.getGraphSince(timestamp)
 			end
 		end
 		
-		if host.type == 'none' then
-			local node, err = db.lookupNodeByIp(host.ip)
-			if node then
+		local node, err = db.lookupNodeByIp(host.ip)
+		if node then
+			if host.type == 'none' then
 				host.type = 'node'
 				host.label = node.name
 			end
+			
+			host.geolocation =
+			{
+				latitude = node.latitude
+				longitude = node.longitude
+				altitude = node.altitude
+			}
 		end
 	end
 	

@@ -53,6 +53,7 @@ function scanner.processPorts(ip, net, scanId)
 		else
 			if info.name then
 				db.registerNode(info.name, ip, port)
+				if info.geolocation then db.setNodeLocation(ip, port, info.geolocation.latitude, info.geolocation.longitude, info.geolocation.altitude) end
 				threadman.notify({type = "nodeFound", ["ip"] = ip, ["port"] = port, ["network"] = net, ["scanId"] = scanId})
 				if info.suites then
 					for id, suite in pairs(info.suites) do

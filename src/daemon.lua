@@ -70,6 +70,9 @@ while start do
 	-- start monitor thread
 	threadman.startThreadInFunction('monitor', 'run')
 	
+	-- start geolocation thread
+	threadman.startThreadInFunction('geolocation', 'run')
+	
 	-- wait until exit message is issued, send heartbeats
 	local retval = 0
 	local listener = threadman.registerListener("main",{"exit","error","info","config"})

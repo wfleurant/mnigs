@@ -30,7 +30,10 @@ function db.prepareDatabase()
 	name varchar(255), \
 	ip varchar(15), \
 	port INTEGER, \
-	last_seen_timestamp INTEGER \
+	last_seen_timestamp INTEGER, \
+	latitude REAL, \
+	longitude REAL, \
+	altitude REAL \
 	)"))
 	
 	assert(dbc:execute("CREATE TABLE IF NOT EXISTS gateways( \
@@ -698,6 +701,27 @@ function db.registerNode(name, ip, port)
 			,tonumber(timestamp)
 		)
 	end
+	local result, err = dbc:execute(query)
+	if result == nil then
+		return nil, err
+	end
+	return true, nil
+end
+
+function db.setNodeLocation(ip, port, latitude, longitude, altitude)
+	local node = db.lookupNode(ip, port)
+	if node == nil then
+		return nil, "No such node"
+	end
+	query = string.format(
+		"UPDATE nodes SET latitude = '%d', longitude = '%d', altitude = '%d' WHERE ip = '%s' AND port = '%d'"
+		,tonumber(latitude)
+		,tonumber(longitude)
+		,tonumber(altitude)
+		,dbc:escape(ip)
+		,tonumber(port)
+	)
+	
 	local result, err = dbc:execute(query)
 	if result == nil then
 		return nil, err
